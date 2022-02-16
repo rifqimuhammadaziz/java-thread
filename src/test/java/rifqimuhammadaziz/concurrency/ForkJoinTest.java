@@ -31,6 +31,26 @@ public class ForkJoinTest {
         pool.awaitTermination(1, TimeUnit.DAYS);
     }
 
+    @Test
+    void recursiveTask() throws InterruptedException, ExecutionException {
+        var pool = ForkJoinPool.commonPool();
+        List<Integer> integers = IntStream.range(0, 100).boxed().collect(Collectors.toList());
+
+        // test using fork join task
+        var task = new TotalRecursiveTask(integers);
+        ForkJoinTask<Long> submit = pool.submit(task);
+
+        // test using single thread
+        Long aLong = submit.get();
+        System.out.println(aLong);
+
+        long sum = integers.stream().mapToLong(value -> value).sum();
+        System.out.println(sum);
+
+        pool.shutdown();
+        pool.awaitTermination(1, TimeUnit.DAYS);
+    }
+
     public static class SimpleForkJoinTask extends RecursiveAction {
 
         private List<Integer> integers;
@@ -63,6 +83,41 @@ public class ForkJoinTest {
 
         private void doExecute() {
             integers.forEach(integer -> System.out.println(Thread.currentThread().getName() + " : " + integer));
+        }
+    }
+
+    public static class TotalRecursiveTask extends RecursiveTask<Long> {
+
+        private List<Integer> integers;
+
+        public TotalRecursiveTask(List<Integer> integers) {
+            this.integers = integers;
+        }
+
+        @Override
+        protected Long compute() {
+            if (integers.size() <= 10) {
+                return doCompute();
+            } else {
+                return forkCompute();
+            }
+        }
+
+        private Long forkCompute() {
+            List<Integer> integers1 = this.integers.subList(0, this.integers.size() / 2);
+            List<Integer> integers2 = this.integers.subList(this.integers.size() / 2, this.integers.size());
+
+            TotalRecursiveTask task1 = new TotalRecursiveTask(integers1);
+            TotalRecursiveTask task2 = new TotalRecursiveTask(integers2);
+
+            ForkJoinTask.invokeAll(task1, task2);
+            return task1.join() + task2.join();
+        }
+
+        private Long doCompute() {
+            return integers.stream().mapToLong(value -> value).peek(value -> {
+                System.out.println(Thread.currentThread().getName() + " : " + value);
+            }).sum();
         }
     }
 }
